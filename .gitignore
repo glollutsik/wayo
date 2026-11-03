@@ -3,3 +3,10 @@
 .env.*
 !.env.example
 node_modules/
+data/
+
+# Local project materials and archived client libraries
+backups/
+AGENTS.md
+WAYO_*.md
+vendor/
