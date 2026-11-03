@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: wayo
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: node --check server.mjs
+    startCommand: node server.mjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: NODE_ENV
+        value: production
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: TWOGIS_API_KEY
+        sync: false
+      - key: TWOGIS_MAP_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

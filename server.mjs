@@ -12,6 +12,7 @@ let planning=false;
 const server=http.createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,'http://localhost');
+    if((req.method==='GET'||req.method==='HEAD')&&url.pathname==='/healthz')return json(res,200,{status:'ok'});
     if(req.method==='GET'&&url.pathname==='/api/config')return json(res,200,{mapKey:config.mapKey,hasApiKey:!!config.key,bounds:config.bounds});
     if(req.method==='POST'&&url.pathname==='/api/screenshot'){
       const origin=req.headers.origin;if(origin&&new URL(origin).host!==req.headers.host)throw new AppError('Недопустимый источник запроса.',403,'ORIGIN');
@@ -57,4 +58,4 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.js')||name.endsWith('.mjs')?'text/javascript; charset=utf-8':name.endsWith('.wasm')?'application/wasm':name.endsWith('.gz')?'application/gzip':'text/css; charset=utf-8','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'strict-origin-when-cross-origin'});res.end(req.method==='HEAD'?undefined:data);
   }catch(e){if(!res.headersSent&&!res.destroyed)json(res,e instanceof AppError?e.status:500,{error:e instanceof AppError?e.message:'Не удалось обработать запрос. Попробуйте ещё раз.',code:e instanceof AppError?e.code:'INTERNAL'});}
 });
-server.listen(config.port,'127.0.0.1',()=>console.log(`WAYO: http://127.0.0.1:${config.port}`));
+server.listen(config.port,config.host,()=>console.log(`WAYO listening on ${config.host}:${config.port}`));
