@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readScreenshot,normalizeExtraction} from '../lib/gemini.mjs';
+import {readScreenshot,normalizeExtraction,upstreamDiagnostic} from '../lib/gemini.mjs';
 import {config} from '../lib/config.mjs';
 const image=Buffer.from([255,216,255,0]);
 const place={name:'Ботанический сад Петра Великого',address:'',city:'',evidence:'Ботанический сад Петра Великого'};
@@ -16,3 +16,12 @@ test('quota, region access and model errors are safe and never retried',async()=
  for(const [status,code]of [[429,'GEMINI_QUOTA'],[403,'GEMINI_ACCESS'],[404,'GEMINI_MODEL'],[500,'GEMINI_UPSTREAM']]){let calls=0;await mocked(async()=>{calls++;return new Response('PRIVATE PROVIDER BODY test-secret-only',{status});},async()=>{await assert.rejects(readScreenshot(image,'image/jpeg'),e=>e.code===code&&!e.message.includes('PRIVATE')&&!e.message.includes('test-secret-only'));assert.equal(calls,1);});}
 });
 test('truncated or blocked generation does not leak partial place guesses',()=>mocked(async()=>Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'partial'}]}}]}),async()=>{await assert.rejects(readScreenshot(image,'image/jpeg'),e=>e.code==='GEMINI_BLOCKED');}));
+test('provider diagnostics exclude credentials, URLs and unrelated response fields',()=>{
+ const result=upstreamDiagnostic(503,{error:{status:'UNAVAILABLE',message:'Busy test-secret-only https://example.com/?key=private',details:[{image:'PRIVATE_IMAGE'}]},private:'PRIVATE_BODY'},'gemini-test','test-secret-only');
+ assert.equal(result.providerStatus,'UNAVAILABLE');assert.equal(result.httpStatus,503);
+ const text=JSON.stringify(result);for(const secret of ['test-secret-only','example.com','private','PRIVATE_IMAGE','PRIVATE_BODY'])assert.ok(!text.includes(secret));
+});
+test('503 reports temporary unavailability, logs provider reason and makes one request',()=>mocked(async()=>Response.json({error:{status:'UNAVAILABLE',message:'Model capacity temporarily exhausted test-secret-only'}},{status:503}),async()=>{
+ const previous=console.warn,logs=[];console.warn=(...args)=>logs.push(args.join(' '));
+ try{await assert.rejects(readScreenshot(image,'image/jpeg'),e=>e.code==='GEMINI_UNAVAILABLE'&&!e.message.includes('capacity'));assert.equal(logs.length,1);assert.match(logs[0],/UNAVAILABLE/);assert.match(logs[0],/gemini-3.5-flash-lite/);assert.ok(!logs[0].includes('test-secret-only'));}finally{console.warn=previous;}
+}));
