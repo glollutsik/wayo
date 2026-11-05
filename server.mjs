@@ -5,7 +5,7 @@ import path from 'node:path';
 import {config} from './lib/config.mjs';
 import {searchPlaces,getPlace,AppError} from './lib/provider.mjs';
 import {buildPlan} from './lib/planner.mjs';
-import {readScreenshot} from './lib/gemini.mjs';
+import {readScreenshot} from './lib/screenshot.mjs';
 const root=fileURLToPath(new URL('.',import.meta.url));
 const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
 let planning=false;
