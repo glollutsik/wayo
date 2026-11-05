@@ -14,8 +14,8 @@ test('unavailable route never becomes zero',async()=>{assert.equal(await schedul
 test('walking wins near ties but not much faster transit',()=>{assert.equal(chooseMode({duration:1100,mode:'walking'},{duration:900,mode:'transit'}).mode,'walking');assert.equal(chooseMode({duration:1600,mode:'walking'},{duration:900,mode:'transit'}).mode,'transit');});
 test('coffee shop does not get lunch role from its name',()=>{assert.deepEqual(classify({name:'Ресторан отличный',rubrics:[{name:'Кофейни'}]}).roles,['coffee']);assert.ok(classify({rubrics:[{name:'Рестораны'}]}).roles.includes('lunch'));});
 test('WKT altitude does not corrupt longitude/latitude',()=>{assert.deepEqual(parseLine('LINESTRING(30.1 59.1 9000, 30.2 59.2 9000)'),[[30.1,59.1],[30.2,59.2]]);assert.equal(normalizeRoute({total_distance:500},'walking'),null);});
-test('invalid parameters rejected before routing',()=>{assert.throws(()=>validateSettings({...raw,endTime:'09:00'}));assert.throws(()=>validateSettings({...raw,date:'2027-02-30'}));assert.throws(()=>validateSettings({...raw,endTime:'18:00'}));});
-test('realistic plan has unique stops, mandatory meal slots and complete time budget',async()=>{const food={...place('3'),kind:'food',roles:['coffee','lunch','dinner']};const plan=await buildPlan([place('2',120),food,place('4',30)],start,raw,{source:route});const d=plan.days[0];assert.equal(d.items.filter(x=>x.kind==='visit').length,2);assert.equal(d.items.filter(x=>x.kind==='coffee'&&!x.place).length,0);assert.equal(d.items.filter(x=>x.kind==='lunch').length,1);assert.equal(d.items.filter(x=>x.kind==='dinner').length,1);const ids=d.items.filter(x=>x.place).map(x=>x.place.id);assert.equal(ids.length,new Set(ids).size);assert.equal(d.summary.visits+d.summary.food+d.summary.travel+d.summary.free,d.end-d.start);for(let i=1;i<d.items.length;i++)assert.equal(d.items[i].start,d.items[i-1].end);assert.equal(plan.included+plan.excluded.length,3);});
+test('invalid parameters rejected before routing',()=>{assert.throws(()=>validateSettings({...raw,endTime:'09:00'}));assert.throws(()=>validateSettings({...raw,date:'2027-02-30'}));assert.doesNotThrow(()=>validateSettings({...raw,endTime:'18:00'}));});
+test('realistic plan has unique stops, optional saved eatery and complete time budget',async()=>{const food={...place('3'),kind:'food',roles:['coffee','lunch','dinner']};const plan=await buildPlan([place('2',120),food,place('4',30)],start,raw,{source:route});const d=plan.days[0];assert.equal(d.items.filter(x=>x.kind==='visit').length,2);assert.equal(d.items.filter(x=>x.kind==='coffee'&&!x.place).length,0);assert.equal(d.items.filter(x=>['lunch','dinner','coffee'].includes(x.kind)).length,1);assert.equal(d.items.filter(x=>['lunch','dinner','coffee'].includes(x.kind)&&!x.place).length,0);const ids=d.items.filter(x=>x.place).map(x=>x.place.id);assert.equal(ids.length,new Set(ids).size);assert.equal(d.summary.visits+d.summary.food+d.summary.travel+d.summary.free,d.end-d.start);for(let i=1;i<d.items.length;i++)assert.equal(d.items[i].start,d.items[i-1].end);assert.equal(plan.included+plan.excluded.length,3);});
 test('same selected set prefers time over input order',async()=>{const a=place('2',30),b=place('3',30);const matrix={'1:2':1800,'1:3':60,'2:3':1800,'3:2':60};const source=async(x,y,mode)=>({mode,duration:matrix[x.id+':'+y.id]||60,geometry:[],transfers:0});const p=await buildPlan([a,b],start,{...raw,lunch:0,dinner:0,coffee:0,returnToStart:false},{source});assert.deepEqual(p.days[0].items.filter(x=>x.place).map(x=>x.place.id),['3','2']);});
 test('too many cafes never creates extra meals',async()=>{const cafes=Array.from({length:10},(_,i)=>({...place(String(10+i)),kind:'food',roles:['coffee']}));const p=await buildPlan([place('2'),...cafes],start,raw,{source:route});assert.equal(p.days[0].items.filter(x=>x.place?.kind==='food').length,1);assert.equal(p.excluded.length,9);});
 test('no phantom coffees are generated when there are no coffee venues',async()=>{const p=await buildPlan([place('2',60)],start,{...raw,coffee:2},{source:route});assert.equal(p.days[0].items.filter(x=>x.kind==='coffee').length,0);});
@@ -47,15 +47,28 @@ test('initially excluded sight is retried after a connecting sight is added',asy
   assert.deepEqual(p.days[0].items.filter(x=>x.kind==='visit').map(x=>x.place.id),['3','2']);
   assert.equal(p.excluded.length,0);
 });
-test('a forty-minute return does not exclude a museum just because dinner ends at 19:30',async()=>{
+test('return journey remains included without a phantom dinner',async()=>{
   const source=async(a,b,mode)=>({mode,duration:a.id===b.id?0:40*60,geometry:[],transfers:0});
   const p=await buildPlan([place('2',120)],start,{...raw,coffee:0},{source});
   assert.equal(p.included,1);const d=p.days[0];
-  const back=d.items.findIndex(x=>x.kind==='travel'&&x.to===start.id),dinner=d.items.findIndex(x=>x.kind==='dinner');
-  assert.ok(back>=0&&back<dinner);assert.equal(d.items.filter(x=>x.kind==='travel').length,2);
+  const back=d.items.findIndex(x=>x.kind==='travel'&&x.to===start.id);
+  assert.ok(back>=0);assert.equal(d.items.filter(x=>x.kind==='dinner').length,0);assert.equal(d.items.filter(x=>x.kind==='travel').length,2);
   assert.ok(d.items.every(x=>x.end<=d.end));
 });
 
 test('prototype rejects multiple days before any provider request',async()=>{
  let calls=0;await assert.rejects(buildPlan([place('2')],start,{...raw,days:2},{source:async()=>{calls++;return null;}}),e=>e.code==='INPUT');assert.equal(calls,0);
+});
+
+test('a full day with no eateries reserves no meal time and fits all three long visits',async()=>{
+ const {lunch,dinner,coffee,dinnerDuration,...settings}=raw;
+ const p=await buildPlan([place('2',150),place('3',150),place('4',150)],start,settings,{source:route});
+ assert.equal(p.included,3);assert.equal(p.excluded.length,0);assert.equal(p.days[0].summary.food,0);
+ assert.ok(!p.days[0].items.some(x=>['lunch','dinner','coffee'].includes(x.kind)));
+});
+test('optional eateries cannot displace sights that fit the day',async()=>{
+ const restaurant={...place('9'),kind:'food',roles:['lunch','dinner']};
+ const p=await buildPlan([place('2',150),place('3',150),place('4',150),restaurant],start,raw,{source:route});
+ assert.equal(p.days[0].items.filter(x=>x.kind==='visit').length,3);
+ assert.equal(p.excluded.length,1);assert.equal(p.excluded[0].place.id,'9');
 });

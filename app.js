@@ -59,7 +59,7 @@ function renderPlan(){
   $('#plan-warnings').innerHTML=plan.warnings.map(w=>`<p class="hint">${escape(w)}</p>`).join('');
   const shownTravel=day.items.filter(x=>x.kind==='travel').reduce((n,x)=>n+(Math.ceil(x.end/60)-Math.ceil(x.start/60))*60,0);
   const shownFree=day.end-day.start-day.summary.visits-day.summary.food-shownTravel;
-  $('#summary').innerHTML=[['Посещения',day.summary.visits],['Еда и кофе',day.summary.food],['В пути',shownTravel],['Свободное время',shownFree]].map(([label,n])=>`<div><strong>${duration(n)}</strong><small>${label}</small></div>`).join('');
+  $('#summary').innerHTML=[['Посещения',day.summary.visits],...(day.summary.food>0?[['Еда и кофе',day.summary.food]]:[]),['В пути',shownTravel],['Свободное время',shownFree]].map(([label,n])=>`<div><strong>${duration(n)}</strong><small>${label}</small></div>`).join('');
   let number=0;
   $('#timeline').innerHTML=(day.empty?'<div class="empty-day"><h3>Свободный день</h3><p>В этот день нет запланированных мест.</p></div>':'')+`<p class="hint">${time(day.start)}–${time(day.end)} · старт: ${escape(plan.start.name)} · запас ${duration(day.summary.reserve)} входит в свободное время</p>`+day.items.map(item=>{
     if(item.kind==='travel')return `<div class="travel">${time(item.start)}–${time(item.end)} · ${modeLabel[item.mode]}${item.approximate?' · приблизительно':''} · ${duration((Math.ceil(item.end/60)-Math.ceil(item.start/60))*60)}${item.lines?.length?`<small>${escape(item.lines.join(', '))}${item.transfers?` · пересадок: ${item.transfers}`:''}</small>`:''}${item.duration>0&&!item.geometry.length?'<small>Геометрия участка недоступна, линия на карте не показана.</small>':''}</div>`;
